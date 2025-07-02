@@ -70,7 +70,7 @@ function testDepositAndMintTogether() public {
     assertGt(collateralValue, 0);
     vm.stopPrank();
 }
-
+```
 
 ---
 
