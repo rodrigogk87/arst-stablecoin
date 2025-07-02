@@ -59,4 +59,11 @@ contract ARSMockOracle is IARSUSDTOracle {
     {
         return (answer, requestTs, fulfillTs);
     }
+
+    function latestValidData(
+        uint256 /*maxAge*/,
+        uint256 /*maxDelay*/
+    ) external view returns (uint256) {
+        return answer;
+    }
 }

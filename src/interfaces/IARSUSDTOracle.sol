@@ -47,4 +47,16 @@ interface IARSUSDTOracle {
             uint256 requestTimestamp,
             uint256 fulfillTimestamp
         );
+
+    /**
+     * @notice Returns the latest ARS/USDT price if data is fresh.
+     * @dev Reverts if the data is stale based on provided freshness parameters.
+     * @param maxAge Maximum allowable age of data (in seconds) since last fulfillment.
+     * @param maxDelay Maximum allowable delay (in seconds) between request and fulfillment.
+     * @return answer The latest ARS/USDT price answer (scaled, e.g., 1e8).
+     */
+    function latestValidData(
+        uint256 maxAge,
+        uint256 maxDelay
+    ) external view returns (uint256 answer);
 }

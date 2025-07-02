@@ -9,6 +9,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ARSXStableCoin} from "./ARSXStableCoin.sol";
 import {IARSUSDTOracle} from "./interfaces/IARSUSDTOracle.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /*
  * @title ARSXEngine
@@ -30,7 +31,18 @@ import {IARSUSDTOracle} from "./interfaces/IARSUSDTOracle.sol";
  * for minting and redeeming ARSX, as well as depositing and withdrawing collateral.
  * @notice This contract is based on the MakerDAO DSS system
  */
-contract ARSXEngine is ReentrancyGuard {
+contract ARSXEngine is ReentrancyGuard, Ownable {
+    ///////////////////
+    // Constants
+    ///////////////////
+    uint private constant PRECISION = 1e18;
+    uint private constant ADDITIONAL_FEED_PRECISION = 1e10;
+    uint private constant ARSX_ORACLE_PRECISION = 1e8;
+    uint private constant MAX_LIQUIDATION_BONUS = 20; // Max 20%
+    uint private constant MIN_LIQUIDATION_BONUS = 5; // Min 5%
+    uint private constant MAX_LIQUIDATION_THRESHOLD = 85; // Max 85% (e.g., 117% collateral ratio)
+    uint private constant MIN_LIQUIDATION_THRESHOLD = 50; // Min 50% (200% collateral ratio)
+
     ///////////////////
     // Errors
     ///////////////////
@@ -42,6 +54,10 @@ contract ARSXEngine is ReentrancyGuard {
     error ARSXEngine__MintFailed();
     error ARSXEngine__HealthFactorOk();
     error ARSXEngine__HealthFactorNotImproved();
+    error ARSXEngine__InsufficientCollateralBalance();
+
+    error ARSXEngine__InvalidLiquidationThreshold();
+    error ARSXEngine__InvalidLiquidationBonus();
 
     ///////////////////
     // Types
@@ -53,25 +69,19 @@ contract ARSXEngine is ReentrancyGuard {
     ///////////////////
     ARSXStableCoin private immutable i_arsx;
 
-    uint private constant LIQUIDATION_THRESHOLD = 50; // This means you need to be 200% over-collateralized
-    uint private constant LIQUIDATION_BONUS = 10; // This means you get assets at a 10% discount when liquidating
-    uint private constant LIQUIDATION_PRECISION = 100;
-    uint private constant MIN_HEALTH_FACTOR = 1e18;
-    uint private constant PRECISION = 1e18;
-    uint private constant ADDITIONAL_FEED_PRECISION = 1e10;
-    uint private constant FEED_PRECISION = 1e8;
-    uint private constant ARSX_ORACLE_PRECISION = 1e8;
+    //review: set this ones in constructor?
+    uint public liquidationThreshold = 50; // Default: 50% (200% collateral ratio)
+    uint public liquidationBonus = 10; // Default: 10% bonus to liquidators
+    uint public constant LIQUIDATION_PRECISION = 100;
+    uint public constant MIN_HEALTH_FACTOR = 1e18;
 
-    /// price feed for arsx
+    uint256 private maxOracleAge = 3600;
+    uint256 private maxOracleDelay = 300;
     IARSUSDTOracle private s_ARSXOracle;
-    /// @dev Mapping of token address to price feed address
     mapping(address collateralToken => address priceFeed) private s_priceFeeds;
-    /// @dev Amount of collateral deposited by user
     mapping(address user => mapping(address collateralToken => uint amount))
         private s_collateralDeposited;
-    /// @dev Amount of ARSX minted by user
     mapping(address user => uint amount) private s_ARSXMinted;
-    /// @dev If we know exactly how many tokens we have, we could make this immutable!
     address[] private s_collateralTokens;
 
     ///////////////////
@@ -87,8 +97,9 @@ contract ARSXEngine is ReentrancyGuard {
         address indexed redeemTo,
         address token,
         uint amount
-    ); // if
-    // redeemFrom != redeemedTo, then it was liquidated
+    );
+    event LiquidationParametersUpdated(uint newThreshold, uint newBonus);
+    event OracleFreshnessParamsUpdated(uint256 newMaxAge, uint256 newMaxDelay);
 
     ///////////////////
     // Modifiers
@@ -110,12 +121,13 @@ contract ARSXEngine is ReentrancyGuard {
     ///////////////////
     // Functions
     ///////////////////
+
     constructor(
         address[] memory tokenAddresses,
         address[] memory priceFeedAddresses,
         address arsxAddress,
         address arsxOracleAddress
-    ) {
+    ) Ownable(msg.sender) {
         if (tokenAddresses.length != priceFeedAddresses.length) {
             revert ARSXEngine__TokenAddressesAndPriceFeedAddressesAmountsDontMatch();
         }
@@ -125,6 +137,39 @@ contract ARSXEngine is ReentrancyGuard {
         }
         i_arsx = ARSXStableCoin(arsxAddress);
         s_ARSXOracle = IARSUSDTOracle(arsxOracleAddress);
+    }
+
+    ///////////////////
+    // Governance Setters
+    ///////////////////
+    function setLiquidationParameters(
+        uint newThreshold,
+        uint newBonus
+    ) external onlyOwner {
+        if (
+            newThreshold < MIN_LIQUIDATION_THRESHOLD ||
+            newThreshold > MAX_LIQUIDATION_THRESHOLD
+        ) {
+            revert ARSXEngine__InvalidLiquidationThreshold();
+        }
+        if (
+            newBonus < MIN_LIQUIDATION_BONUS || newBonus > MAX_LIQUIDATION_BONUS
+        ) {
+            revert ARSXEngine__InvalidLiquidationBonus();
+        }
+
+        liquidationThreshold = newThreshold;
+        liquidationBonus = newBonus;
+        emit LiquidationParametersUpdated(newThreshold, newBonus);
+    }
+
+    function setOracleFreshnessParams(
+        uint256 _maxAge,
+        uint256 _maxDelay
+    ) external onlyOwner {
+        maxOracleAge = _maxAge;
+        maxOracleDelay = _maxDelay;
+        emit OracleFreshnessParamsUpdated(_maxAge, _maxDelay);
     }
 
     ///////////////////
@@ -191,6 +236,7 @@ contract ARSXEngine is ReentrancyGuard {
             msg.sender,
             msg.sender
         );
+        // Check health factor after updating internal state
         revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -204,25 +250,21 @@ contract ARSXEngine is ReentrancyGuard {
         revertIfHealthFactorIsBroken(msg.sender); // I don't think this would ever hit...
     }
 
-    /*
-     * @param collateral: The ERC20 token address of the collateral you're using to make the protocol solvent again.
+    /**
+     * @param collateral The ERC20 token address of the collateral you're using to make the protocol solvent again.
      * This is collateral that you're going to take from the user who is insolvent.
      * In return, you have to burn your ARSX to pay off their debt, but you don't pay off your own.
-     * @param user: The user who is insolvent. They have to have a _healthFactor below MIN_HEALTH_FACTOR
-     * @param debtToCover: The amount of ARSX you want to burn to cover the user's debt.
+     * @param user The user who is insolvent. They have to have a _healthFactor below MIN_HEALTH_FACTOR.
+     * @param debtToCover The amount of ARSX you want to burn to cover the user's debt.
      *
-     * @notice: You can partially liquidate a user.
-     * @notice: You will get a 10% LIQUIDATION_BONUS for taking the users funds.
-    * @notice: This function working assumes that the protocol will be roughly 150% overcollateralized in order for this
-    to work.
-    * @notice: A known bug would be if the protocol was only 100% collateralized, we wouldn't be able to liquidate
-    anyone.
-     * For example, if the price of the collateral plummeted before anyone could be liquidated.
+     * @notice You can partially liquidate a user.
+     * @notice You will get a 10% LIQUIDATION_BONUS for taking the user’s collateral.
+     * @notice This function assumes that the protocol will be roughly 150% over-collateralized in order for it to work properly.
      */
     function liquidate(
         address collateral,
         address user,
-        uint debtToCover //ej 1000 pesos
+        uint debtToCover
     )
         external
         isAllowedToken(collateral)
@@ -233,32 +275,46 @@ contract ARSXEngine is ReentrancyGuard {
         if (startingUserHealthFactor >= MIN_HEALTH_FACTOR) {
             revert ARSXEngine__HealthFactorOk();
         }
-        // If covering 100 usd of ARSX, we need to $100 of collateral
+
+        // Calculate how much collateral to seize to cover the debt
         uint tokenAmountFromDebtCovered = getTokenAmountFromUsd(
             collateral,
             debtToCover
         );
-        // And give them a 10% bonus
-        // So we are giving the liquidator $110 of WETH for 100 ARSX
-        // We should implement a feature to liquidate in the event the protocol is insolvent
-        // And sweep extra amounts into a treasury
-        uint bonusCollateral = (tokenAmountFromDebtCovered *
-            LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
-        // Burn ARSX equal to debtToCover
-        // Figure out how much collateral to recover based on how much burnt
-        _redeemCollateral(
-            collateral,
-            tokenAmountFromDebtCovered + bonusCollateral,
-            user,
-            msg.sender
-        );
+
+        // Add liquidation bonus
+        uint bonusCollateral = (tokenAmountFromDebtCovered * liquidationBonus) /
+            LIQUIDATION_PRECISION;
+
+        uint collateralToSeize = tokenAmountFromDebtCovered + bonusCollateral;
+
+        // Execute internal steps (split for clarity and easier auditing)
+        _executeLiquidation(collateral, user, debtToCover, collateralToSeize);
+    }
+
+    /**
+     * @dev Internal function to handle collateral redemption and ARSX burn in a liquidation.
+     * Uses Checks-Effects-Interactions pattern explicitly:
+     * 1️⃣ Adjust internal balances first.
+     * 2️⃣ Transfer tokens out.
+     */
+    function _executeLiquidation(
+        address collateral,
+        address user,
+        uint debtToCover,
+        uint collateralToSeize
+    ) private {
+        uint startingHF = _healthFactor(user);
+
+        _redeemCollateral(collateral, collateralToSeize, user, msg.sender);
         _burnArsx(debtToCover, user, msg.sender);
 
-        uint endingUserHealthFactor = _healthFactor(user);
-        // This conditional should never hit, but just in case
-        if (endingUserHealthFactor <= startingUserHealthFactor) {
+        uint endingHF = _healthFactor(user);
+        // Safety check: ensure user position is improved
+        if (endingHF < startingHF) {
             revert ARSXEngine__HealthFactorNotImproved();
         }
+
         revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -269,7 +325,6 @@ contract ARSXEngine is ReentrancyGuard {
      * @param amountArsxToMint: The amount of ARSX you want to mint
      * You can only mint ARSX if you have enough collateral
      */
-
     function mintArsx(
         uint amountArsxToMint
     ) public moreThanZero(amountArsxToMint) nonReentrant {
@@ -295,14 +350,6 @@ contract ARSXEngine is ReentrancyGuard {
         nonReentrant
         isAllowedToken(tokenCollateralAddress)
     {
-        s_collateralDeposited[msg.sender][
-            tokenCollateralAddress
-        ] += amountCollateral;
-        emit CollateralDeposited(
-            msg.sender,
-            tokenCollateralAddress,
-            amountCollateral
-        );
         bool success = IERC20(tokenCollateralAddress).transferFrom(
             msg.sender,
             address(this),
@@ -311,6 +358,15 @@ contract ARSXEngine is ReentrancyGuard {
         if (!success) {
             revert ARSXEngine__TransferFailed();
         }
+
+        s_collateralDeposited[msg.sender][
+            tokenCollateralAddress
+        ] += amountCollateral;
+        emit CollateralDeposited(
+            msg.sender,
+            tokenCollateralAddress,
+            amountCollateral
+        );
     }
 
     ///////////////////
@@ -322,20 +378,24 @@ contract ARSXEngine is ReentrancyGuard {
         address from,
         address to
     ) private {
+        if (
+            s_collateralDeposited[from][tokenCollateralAddress] <
+            amountCollateral
+        ) revert ARSXEngine__InsufficientCollateralBalance();
+
         s_collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
+        bool success = IERC20(tokenCollateralAddress).transfer(
+            to,
+            amountCollateral
+        );
+        if (!success) revert ARSXEngine__TransferFailed();
+
         emit CollateralRedeemed(
             from,
             to,
             tokenCollateralAddress,
             amountCollateral
         );
-        bool success = IERC20(tokenCollateralAddress).transfer(
-            to,
-            amountCollateral
-        );
-        if (!success) {
-            revert ARSXEngine__TransferFailed();
-        }
     }
 
     function _burnArsx(
@@ -350,7 +410,6 @@ contract ARSXEngine is ReentrancyGuard {
             address(this),
             amountArsxToBurn
         );
-        // This conditional is hypothetically unreachable
         if (!success) {
             revert ARSXEngine__TransferFailed();
         }
@@ -371,7 +430,10 @@ contract ARSXEngine is ReentrancyGuard {
     function _healthFactor(address user) private view returns (uint) {
         (, uint collateralValueInUsd) = _getAccountInformation(user);
 
-        (uint arsxPrice, , ) = s_ARSXOracle.latestData();
+        uint arsxPrice = s_ARSXOracle.latestValidData(
+            maxOracleAge,
+            maxOracleDelay
+        );
         uint totalArsxMintedInUsd = (s_ARSXMinted[user] * arsxPrice) /
             ARSX_ORACLE_PRECISION;
         return
@@ -386,20 +448,17 @@ contract ARSXEngine is ReentrancyGuard {
             s_priceFeeds[token]
         );
         (, int256 price, , , ) = priceFeed.staleCheckLatestRoundData();
-        // 1 ETH = 1000 USD
-        // The returned value from Chainlink will be 1000 * 1e8
-        // Most USD pairs have 8 decimals, so we will just pretend they all do
-        // We want to have everything in terms of WEI, so we add 10 zeros at the end
+
         return ((uint(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
     }
 
     function _calculateHealthFactor(
         uint totalArsxMintedInUsd,
         uint collateralValueInUsd
-    ) internal pure returns (uint) {
+    ) internal view returns (uint) {
         if (totalArsxMintedInUsd == 0) return type(uint).max;
         uint collateralAdjustedForThreshold = (collateralValueInUsd *
-            LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+            liquidationThreshold) / LIQUIDATION_PRECISION;
         return
             (collateralAdjustedForThreshold * PRECISION) / totalArsxMintedInUsd;
     }
@@ -419,7 +478,7 @@ contract ARSXEngine is ReentrancyGuard {
     function calculateHealthFactor(
         uint totalArsxMintedInUsd,
         uint collateralValueInUsd
-    ) external pure returns (uint) {
+    ) external view returns (uint) {
         return
             _calculateHealthFactor(totalArsxMintedInUsd, collateralValueInUsd);
     }
@@ -459,7 +518,10 @@ contract ARSXEngine is ReentrancyGuard {
         address token,
         uint amountInWei
     ) public view returns (uint) {
-        (uint arsxPrice, , ) = s_ARSXOracle.latestData();
+        uint arsxPrice = s_ARSXOracle.latestValidData(
+            maxOracleAge,
+            maxOracleDelay
+        );
         uint usdAmountInWei = (amountInWei * arsxPrice) / ARSX_ORACLE_PRECISION;
         AggregatorV3Interface priceFeed = AggregatorV3Interface(
             s_priceFeeds[token]
@@ -481,12 +543,12 @@ contract ARSXEngine is ReentrancyGuard {
         return ADDITIONAL_FEED_PRECISION;
     }
 
-    function getLiquidationThreshold() external pure returns (uint) {
-        return LIQUIDATION_THRESHOLD;
+    function getLiquidationThreshold() external view returns (uint) {
+        return liquidationThreshold;
     }
 
-    function getLiquidationBonus() external pure returns (uint) {
-        return LIQUIDATION_BONUS;
+    function getLiquidationBonus() external view returns (uint) {
+        return liquidationBonus;
     }
 
     function getLiquidationPrecision() external pure returns (uint) {
