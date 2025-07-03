@@ -8,7 +8,7 @@ import {ARSXStableCoin} from "./ARSXStableCoin.sol";
 contract PSM is Ownable {
     error PSM__AmountMustBeMoreThanZero();
     error PSM__TransferFailed();
-    error PSM__NotEnoughARSX();
+    error PSM__NotEnoughCollateral();
 
     IERC20 public immutable collateralToken;
     ARSXStableCoin public immutable arsx;
@@ -44,7 +44,7 @@ contract PSM is Ownable {
         uint256 netAmount = arsxAmount - fee;
 
         uint256 collateralBalance = collateralToken.balanceOf(address(this));
-        if (netAmount > collateralBalance) revert PSM__NotEnoughARSX();
+        if (netAmount > collateralBalance) revert PSM__NotEnoughCollateral();
 
         bool success = arsx.transferFrom(msg.sender, address(this), arsxAmount);
         if (!success) revert PSM__TransferFailed();
