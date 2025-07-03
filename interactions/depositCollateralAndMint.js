@@ -3,11 +3,13 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 // --- CONFIG --- //
-const RPC_URL = process.env.SEPOLIA_RPC_URL;
+const RPC_URL = process.env.ARB_SEPOLIA_RPC_URL;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-const ENGINE_ADDRESS = "0xa7CE4add0035CF2C0ac73468CF3dfc53098D6703";
-const COLLATERAL_ADDRESS = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"; 
+const ENGINE_ADDRESS = "0x733a2e073cf9886a4b4E3A188d037E457C2A5A0a";//arb
+// //"0xa7CE4add0035CF2C0ac73468CF3dfc53098D6703";(sepolia)
+const COLLATERAL_ADDRESS = "0x2836ae2eA2c013acD38028fD0C77B92cccFa2EE4";//arb
+// //"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"; (sepolia)
 
 // ABIs (mínimo ABI para ERC20 y tu función)
 const ERC20_ABI = [
@@ -34,10 +36,10 @@ async function main() {
   const amountArsxToMint = ethers.parseEther("14000");   // Ej: 14000 ARSX
 
   // ✅ Aprobar primero
-  //console.log("Aprobando...");
-  //const approveTx = await collateral.approve(ENGINE_ADDRESS, amountCollateral);
-  //await approveTx.wait();
-  //console.log(`✔️ Approved: ${approveTx.hash}`);
+  console.log("Aprobando...");
+  const approveTx = await collateral.approve(ENGINE_ADDRESS, amountCollateral);
+  await approveTx.wait();
+  console.log(`✔️ Approved: ${approveTx.hash}`);
 
   // ✅ Depositar y mintear
   console.log("Llamando depositCollateralAndMintArsx...");
