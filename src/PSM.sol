@@ -14,11 +14,7 @@ contract PSM is Ownable {
     ARSXStableCoin public immutable arsx;
     uint256 public feeBps; // e.g., 30 = 0.3%
 
-    constructor(
-        address _collateralToken,
-        address _arsx,
-        uint256 _feeBps
-    ) Ownable(msg.sender) {
+    constructor(address _collateralToken, address _arsx, uint256 _feeBps) Ownable(msg.sender) {
         collateralToken = IERC20(_collateralToken);
         arsx = ARSXStableCoin(_arsx);
         feeBps = _feeBps;
@@ -34,11 +30,7 @@ contract PSM is Ownable {
         uint256 fee = (collateralAmount * feeBps) / 10_000;
         uint256 netAmount = collateralAmount - fee;
 
-        bool success = collateralToken.transferFrom(
-            msg.sender,
-            address(this),
-            collateralAmount
-        );
+        bool success = collateralToken.transferFrom(msg.sender, address(this), collateralAmount);
         if (!success) revert PSM__TransferFailed();
 
         bool minted = arsx.mint(msg.sender, netAmount);
