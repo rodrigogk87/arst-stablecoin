@@ -17,9 +17,7 @@ contract ARSMockOracle is IARSUSDTOracle {
 
     function setAnswer(uint256 newAnswer) external {
         answer = newAnswer;
-        requestId = bytes32(
-            uint256(keccak256(abi.encode(newAnswer, block.timestamp)))
-        );
+        requestId = bytes32(uint256(keccak256(abi.encode(newAnswer, block.timestamp))));
     }
 
     function latestAnswer() external view override returns (uint256) {
@@ -38,10 +36,7 @@ contract ARSMockOracle is IARSUSDTOracle {
         return fulfillTs;
     }
 
-    function isStale(
-        uint256 maxAge,
-        uint256 maxDelay
-    ) external view override returns (bool) {
+    function isStale(uint256 maxAge, uint256 maxDelay) external view override returns (bool) {
         if (block.timestamp - fulfillTs > maxAge) {
             return true;
         }
@@ -51,19 +46,11 @@ contract ARSMockOracle is IARSUSDTOracle {
         return false;
     }
 
-    function latestData()
-        external
-        view
-        override
-        returns (uint256, uint256, uint256)
-    {
+    function latestData() external view override returns (uint256, uint256, uint256) {
         return (answer, requestTs, fulfillTs);
     }
 
-    function latestValidData(
-        uint256 /*maxAge*/,
-        uint256 /*maxDelay*/
-    ) external view returns (uint256) {
+    function latestValidData(uint256, /*maxAge*/ uint256 /*maxDelay*/ ) external view returns (uint256) {
         return answer;
     }
 }

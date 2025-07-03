@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 contract MockOracle is AggregatorV3Interface {
-    int public price; // ✅ Variable de estado para el precio
+    int256 public price; // ✅ Variable de estado para el precio
 
     constructor() {
         price = 2000e8; // Valor inicial por defecto: $2000
@@ -19,26 +19,19 @@ contract MockOracle is AggregatorV3Interface {
         return "Mock";
     }
 
-    function version() external pure override returns (uint) {
+    function version() external pure override returns (uint256) {
         return 1;
     }
 
-    function getRoundData(
-        uint80
-    ) external view override returns (uint80, int, uint, uint, uint80) {
+    function getRoundData(uint80) external view override returns (uint80, int256, uint256, uint256, uint80) {
         return (0, price, block.timestamp - 60, block.timestamp - 60, 0);
     }
 
-    function latestRoundData()
-        external
-        view
-        override
-        returns (uint80, int, uint, uint, uint80)
-    {
+    function latestRoundData() external view override returns (uint80, int256, uint256, uint256, uint80) {
         return (0, price, block.timestamp - 60, block.timestamp - 60, 0);
     }
 
-    function setPrice(int newPrice) external {
+    function setPrice(int256 newPrice) external {
         price = newPrice;
     }
 }

@@ -28,10 +28,7 @@ interface IARSUSDTOracle {
      * @param maxDelay Maximum delay allowed between request and fulfillment (seconds)
      * @return isDataStale True if data is stale or delayed
      */
-    function isStale(
-        uint256 maxAge,
-        uint256 maxDelay
-    ) external view returns (bool isDataStale);
+    function isStale(uint256 maxAge, uint256 maxDelay) external view returns (bool isDataStale);
 
     /**
      * @notice Returns the latest price data along with timestamps
@@ -39,14 +36,7 @@ interface IARSUSDTOracle {
      * @return requestTimestamp Timestamp when the request was sent
      * @return fulfillTimestamp Timestamp when the request was fulfilled
      */
-    function latestData()
-        external
-        view
-        returns (
-            uint256 answer,
-            uint256 requestTimestamp,
-            uint256 fulfillTimestamp
-        );
+    function latestData() external view returns (uint256 answer, uint256 requestTimestamp, uint256 fulfillTimestamp);
 
     /**
      * @notice Returns the latest ARS/USDT price if data is fresh.
@@ -55,8 +45,5 @@ interface IARSUSDTOracle {
      * @param maxDelay Maximum allowable delay (in seconds) between request and fulfillment.
      * @return answer The latest ARS/USDT price answer (scaled, e.g., 1e8).
      */
-    function latestValidData(
-        uint256 maxAge,
-        uint256 maxDelay
-    ) external view returns (uint256 answer);
+    function latestValidData(uint256 maxAge, uint256 maxDelay) external view returns (uint256 answer);
 }

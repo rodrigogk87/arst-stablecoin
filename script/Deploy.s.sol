@@ -33,12 +33,7 @@ contract DeployARSX is Script {
         priceFeeds[0] = priceFeed;
 
         // Deploy ARSXEngine
-        ARSXEngine arsxEngine = new ARSXEngine(
-            collateralTokens,
-            priceFeeds,
-            address(arsxStableCoin),
-            oracleAddress
-        );
+        ARSXEngine arsxEngine = new ARSXEngine(collateralTokens, priceFeeds, address(arsxStableCoin), oracleAddress);
 
         // Transfer ARSXStableCoin ownership to engine
         arsxStableCoin.transferOwnership(address(arsxEngine));
