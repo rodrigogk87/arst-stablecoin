@@ -2,48 +2,34 @@
 pragma solidity ^0.8.20;
 
 interface IARSUSDTOracle {
-    /**
-     * @notice Returns the latest ARS/USDT answer (scaled, e.g., 1e8)
-     */
-    function latestAnswer() external view returns (uint256);
+    error ARSUSDTOracle__StaleData();
+    error ARSUSDTOracle__PriceError();
+    error ARSUSDTOracle__NotAuthorized();
 
     /**
-     * @notice Returns the ID of the last request sent
+     * @notice Returns the latest ARS/USDT price if data is considered fresh.
+     * @dev Reverts if the oracle data is stale according to maxAge or price is 0.
+     * @param maxAge Maximum allowable age of data (in seconds).
+     * @return answer The latest ARS/USDT price answer (scaled).
      */
-    function lastRequestId() external view returns (bytes32);
+    function latestValidData(
+        uint256 maxAge
+    ) external view returns (uint256 answer);
 
     /**
-     * @notice Timestamp when the last request was sent
+     * @notice Returns the latest price and timestamp.
+     * @return answer Latest ARS/USDT price
+     * @return updateTimestamp Timestamp when last updated
      */
-    function lastRequestTimestamp() external view returns (uint256);
+    function latestData()
+        external
+        view
+        returns (uint256 answer, uint256 updateTimestamp);
 
     /**
-     * @notice Timestamp when the last request was fulfilled
+     * @notice Check if data is stale.
+     * @param maxAge Maximum age allowed since last update (seconds).
+     * @return True if data is stale.
      */
-    function lastFulfillTimestamp() external view returns (uint256);
-
-    /**
-     * @notice Check if the latestAnswer data is stale
-     * @param maxAge Maximum age allowed since last fulfillment (seconds)
-     * @param maxDelay Maximum delay allowed between request and fulfillment (seconds)
-     * @return isDataStale True if data is stale or delayed
-     */
-    function isStale(uint256 maxAge, uint256 maxDelay) external view returns (bool isDataStale);
-
-    /**
-     * @notice Returns the latest price data along with timestamps
-     * @return answer Latest ARS/USDT answer
-     * @return requestTimestamp Timestamp when the request was sent
-     * @return fulfillTimestamp Timestamp when the request was fulfilled
-     */
-    function latestData() external view returns (uint256 answer, uint256 requestTimestamp, uint256 fulfillTimestamp);
-
-    /**
-     * @notice Returns the latest ARS/USDT price if data is fresh.
-     * @dev Reverts if the data is stale based on provided freshness parameters.
-     * @param maxAge Maximum allowable age of data (in seconds) since last fulfillment.
-     * @param maxDelay Maximum allowable delay (in seconds) between request and fulfillment.
-     * @return answer The latest ARS/USDT price answer (scaled, e.g., 1e8).
-     */
-    function latestValidData(uint256 maxAge, uint256 maxDelay) external view returns (uint256 answer);
+    function isStale(uint256 maxAge) external view returns (bool);
 }
