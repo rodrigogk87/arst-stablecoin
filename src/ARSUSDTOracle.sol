@@ -24,19 +24,13 @@ contract ARSUSDTOracle is Ownable {
         emit PriceUpdated(newPrice, lastUpdateTimestamp);
     }
 
-    function latestValidData(
-        uint256 maxAge
-    ) external view returns (uint256 answer) {
+    function latestValidData(uint256 maxAge) external view returns (uint256 answer) {
         if (isStale(maxAge)) revert ARSUSDTOracle__StaleData();
         if (latestAnswer == 0) revert ARSUSDTOracle__PriceError();
         return latestAnswer;
     }
 
-    function latestData()
-        external
-        view
-        returns (uint256 answer, uint256 updateTimestamp)
-    {
+    function latestData() external view returns (uint256 answer, uint256 updateTimestamp) {
         return (latestAnswer, lastUpdateTimestamp);
     }
 

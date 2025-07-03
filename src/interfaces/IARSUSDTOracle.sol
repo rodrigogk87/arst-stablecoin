@@ -12,19 +12,14 @@ interface IARSUSDTOracle {
      * @param maxAge Maximum allowable age of data (in seconds).
      * @return answer The latest ARS/USDT price answer (scaled).
      */
-    function latestValidData(
-        uint256 maxAge
-    ) external view returns (uint256 answer);
+    function latestValidData(uint256 maxAge) external view returns (uint256 answer);
 
     /**
      * @notice Returns the latest price and timestamp.
      * @return answer Latest ARS/USDT price
      * @return updateTimestamp Timestamp when last updated
      */
-    function latestData()
-        external
-        view
-        returns (uint256 answer, uint256 updateTimestamp);
+    function latestData() external view returns (uint256 answer, uint256 updateTimestamp);
 
     /**
      * @notice Check if data is stale.

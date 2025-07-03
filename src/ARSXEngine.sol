@@ -76,25 +76,15 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
     uint256 private maxOracleAge = 7200;
     IARSUSDTOracle private s_ARSXOracle;
     mapping(address collateralToken => address priceFeed) private s_priceFeeds;
-    mapping(address user => mapping(address collateralToken => uint256 amount))
-        private s_collateralDeposited;
+    mapping(address user => mapping(address collateralToken => uint256 amount)) private s_collateralDeposited;
     mapping(address user => uint256 amount) private s_ARSXMinted;
     address[] private s_collateralTokens;
 
     ///////////////////
     // Events
     ///////////////////
-    event CollateralDeposited(
-        address indexed user,
-        address indexed token,
-        uint256 indexed amount
-    );
-    event CollateralRedeemed(
-        address indexed redeemFrom,
-        address indexed redeemTo,
-        address token,
-        uint256 amount
-    );
+    event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
+    event CollateralRedeemed(address indexed redeemFrom, address indexed redeemTo, address token, uint256 amount);
     event LiquidationParametersUpdated(uint256 newThreshold, uint256 newBonus);
     event OracleFreshnessParamsUpdated(uint256 newMaxAge);
 
@@ -139,19 +129,11 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
     ///////////////////
     // Governance Setters
     ///////////////////
-    function setLiquidationParameters(
-        uint256 newThreshold,
-        uint256 newBonus
-    ) external onlyOwner {
-        if (
-            newThreshold < MIN_LIQUIDATION_THRESHOLD ||
-            newThreshold > MAX_LIQUIDATION_THRESHOLD
-        ) {
+    function setLiquidationParameters(uint256 newThreshold, uint256 newBonus) external onlyOwner {
+        if (newThreshold < MIN_LIQUIDATION_THRESHOLD || newThreshold > MAX_LIQUIDATION_THRESHOLD) {
             revert ARSXEngine__InvalidLiquidationThreshold();
         }
-        if (
-            newBonus < MIN_LIQUIDATION_BONUS || newBonus > MAX_LIQUIDATION_BONUS
-        ) {
+        if (newBonus < MIN_LIQUIDATION_BONUS || newBonus > MAX_LIQUIDATION_BONUS) {
             revert ARSXEngine__InvalidLiquidationBonus();
         }
 
@@ -189,22 +171,13 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
      * @param amountArsxToBurn: The amount of Arsx you want to burn
      * @notice This function will withdraw your collateral and burn DSC in one transaction
      */
-    function redeemCollateralForArsx(
-        address tokenCollateralAddress,
-        uint256 amountCollateral,
-        uint256 amountArsxToBurn
-    )
+    function redeemCollateralForArsx(address tokenCollateralAddress, uint256 amountCollateral, uint256 amountArsxToBurn)
         external
         moreThanZero(amountCollateral)
         isAllowedToken(tokenCollateralAddress)
     {
         _burnArsx(amountArsxToBurn, msg.sender, msg.sender);
-        _redeemCollateral(
-            tokenCollateralAddress,
-            amountCollateral,
-            msg.sender,
-            msg.sender
-        );
+        _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender, msg.sender);
         revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -214,21 +187,13 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
      * @notice This function will redeem your collateral.
      * @notice If you have ARSX minted, you will not be able to redeem until you burn your ARSX
      */
-    function redeemCollateral(
-        address tokenCollateralAddress,
-        uint256 amountCollateral
-    )
+    function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral)
         external
         moreThanZero(amountCollateral)
         nonReentrant
         isAllowedToken(tokenCollateralAddress)
     {
-        _redeemCollateral(
-            tokenCollateralAddress,
-            amountCollateral,
-            msg.sender,
-            msg.sender
-        );
+        _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender, msg.sender);
         // Check health factor after updating internal state
         revertIfHealthFactorIsBroken(msg.sender);
     }
@@ -254,11 +219,7 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
      * @notice You will get a 10% LIQUIDATION_BONUS for taking the user’s collateral.
      * @notice This function assumes that the protocol will be roughly 150% over-collateralized in order for it to work properly.
      */
-    function liquidate(
-        address collateral,
-        address user,
-        uint256 debtToCover
-    )
+    function liquidate(address collateral, address user, uint256 debtToCover)
         external
         isAllowedToken(collateral)
         moreThanZero(debtToCover)
@@ -270,17 +231,12 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         }
 
         // Calculate how much collateral to seize to cover the debt
-        uint256 tokenAmountFromDebtCovered = getTokenAmountFromUsd(
-            collateral,
-            debtToCover
-        );
+        uint256 tokenAmountFromDebtCovered = getTokenAmountFromUsd(collateral, debtToCover);
 
         // Add liquidation bonus
-        uint256 bonusCollateral = (tokenAmountFromDebtCovered *
-            liquidationBonus) / LIQUIDATION_PRECISION;
+        uint256 bonusCollateral = (tokenAmountFromDebtCovered * liquidationBonus) / LIQUIDATION_PRECISION;
 
-        uint256 collateralToSeize = tokenAmountFromDebtCovered +
-            bonusCollateral;
+        uint256 collateralToSeize = tokenAmountFromDebtCovered + bonusCollateral;
 
         // Execute internal steps (split for clarity and easier auditing)
         _executeLiquidation(collateral, user, debtToCover, collateralToSeize);
@@ -292,12 +248,9 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
      * 1️⃣ Adjust internal balances first.
      * 2️⃣ Transfer tokens out.
      */
-    function _executeLiquidation(
-        address collateral,
-        address user,
-        uint256 debtToCover,
-        uint256 collateralToSeize
-    ) private {
+    function _executeLiquidation(address collateral, address user, uint256 debtToCover, uint256 collateralToSeize)
+        private
+    {
         uint256 startingHF = _healthFactor(user);
 
         _redeemCollateral(collateral, collateralToSeize, user, msg.sender);
@@ -319,9 +272,7 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
      * @param amountArsxToMint: The amount of ARSX you want to mint
      * You can only mint ARSX if you have enough collateral
      */
-    function mintArsx(
-        uint256 amountArsxToMint
-    ) public moreThanZero(amountArsxToMint) nonReentrant {
+    function mintArsx(uint256 amountArsxToMint) public moreThanZero(amountArsxToMint) nonReentrant {
         s_ARSXMinted[msg.sender] += amountArsxToMint;
         revertIfHealthFactorIsBroken(msg.sender);
         bool minted = i_arsx.mint(msg.sender, amountArsxToMint);
@@ -335,77 +286,42 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
      * @param tokenCollateralAddress: The ERC20 token address of the collateral you're depositing
      * @param amountCollateral: The amount of collateral you're depositing
      */
-    function depositCollateral(
-        address tokenCollateralAddress,
-        uint256 amountCollateral
-    )
+    function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral)
         public
         moreThanZero(amountCollateral)
         nonReentrant
         isAllowedToken(tokenCollateralAddress)
     {
-        bool success = IERC20(tokenCollateralAddress).transferFrom(
-            msg.sender,
-            address(this),
-            amountCollateral
-        );
+        bool success = IERC20(tokenCollateralAddress).transferFrom(msg.sender, address(this), amountCollateral);
         if (!success) {
             revert ARSXEngine__TransferFailed();
         }
 
-        s_collateralDeposited[msg.sender][
-            tokenCollateralAddress
-        ] += amountCollateral;
-        emit CollateralDeposited(
-            msg.sender,
-            tokenCollateralAddress,
-            amountCollateral
-        );
+        s_collateralDeposited[msg.sender][tokenCollateralAddress] += amountCollateral;
+        emit CollateralDeposited(msg.sender, tokenCollateralAddress, amountCollateral);
     }
 
     ///////////////////
     // Private Functions
     ///////////////////
-    function _redeemCollateral(
-        address tokenCollateralAddress,
-        uint256 amountCollateral,
-        address from,
-        address to
-    ) private {
-        if (
-            s_collateralDeposited[from][tokenCollateralAddress] <
-            amountCollateral
-        ) {
+    function _redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral, address from, address to)
+        private
+    {
+        if (s_collateralDeposited[from][tokenCollateralAddress] < amountCollateral) {
             revert ARSXEngine__InsufficientCollateralBalance();
         }
 
         s_collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
-        bool success = IERC20(tokenCollateralAddress).transfer(
-            to,
-            amountCollateral
-        );
+        bool success = IERC20(tokenCollateralAddress).transfer(to, amountCollateral);
         if (!success) revert ARSXEngine__TransferFailed();
 
-        emit CollateralRedeemed(
-            from,
-            to,
-            tokenCollateralAddress,
-            amountCollateral
-        );
+        emit CollateralRedeemed(from, to, tokenCollateralAddress, amountCollateral);
     }
 
-    function _burnArsx(
-        uint256 amountArsxToBurn,
-        address onBehalfOf,
-        address arsxFrom
-    ) private {
+    function _burnArsx(uint256 amountArsxToBurn, address onBehalfOf, address arsxFrom) private {
         s_ARSXMinted[onBehalfOf] -= amountArsxToBurn;
 
-        bool success = i_arsx.transferFrom(
-            arsxFrom,
-            address(this),
-            amountArsxToBurn
-        );
+        bool success = i_arsx.transferFrom(arsxFrom, address(this), amountArsxToBurn);
         if (!success) {
             revert ARSXEngine__TransferFailed();
         }
@@ -416,9 +332,7 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
     // Private & Internal View & Pure Functions
     //////////////////////////////
 
-    function _getAccountInformation(
-        address user
-    )
+    function _getAccountInformation(address user)
         private
         view
         returns (uint256 totalArsxMinted, uint256 collateralValueInUsd)
@@ -431,34 +345,25 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         (, uint256 collateralValueInUsd) = _getAccountInformation(user);
 
         uint256 arsxPrice = s_ARSXOracle.latestValidData(maxOracleAge);
-        uint256 totalArsxMintedInUsd = (s_ARSXMinted[user] * arsxPrice) /
-            ARSX_ORACLE_PRECISION;
-        return
-            _calculateHealthFactor(totalArsxMintedInUsd, collateralValueInUsd);
+        uint256 totalArsxMintedInUsd = (s_ARSXMinted[user] * arsxPrice) / ARSX_ORACLE_PRECISION;
+        return _calculateHealthFactor(totalArsxMintedInUsd, collateralValueInUsd);
     }
 
-    function _getUsdValue(
-        address token,
-        uint256 amount
-    ) private view returns (uint256) {
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(
-            s_priceFeeds[token]
-        );
-        (, int256 price, , , ) = priceFeed.staleCheckLatestRoundData();
+    function _getUsdValue(address token, uint256 amount) private view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
 
-        return
-            ((uint256(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
+        return ((uint256(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
     }
 
-    function _calculateHealthFactor(
-        uint256 totalArsxMintedInUsd,
-        uint256 collateralValueInUsd
-    ) internal view returns (uint256) {
+    function _calculateHealthFactor(uint256 totalArsxMintedInUsd, uint256 collateralValueInUsd)
+        internal
+        view
+        returns (uint256)
+    {
         if (totalArsxMintedInUsd == 0) return type(uint256).max;
-        uint256 collateralAdjustedForThreshold = (collateralValueInUsd *
-            liquidationThreshold) / LIQUIDATION_PRECISION;
-        return
-            (collateralAdjustedForThreshold * PRECISION) / totalArsxMintedInUsd;
+        uint256 collateralAdjustedForThreshold = (collateralValueInUsd * liquidationThreshold) / LIQUIDATION_PRECISION;
+        return (collateralAdjustedForThreshold * PRECISION) / totalArsxMintedInUsd;
     }
 
     function revertIfHealthFactorIsBroken(address user) internal view {
@@ -473,17 +378,15 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
     // External & Public View & Pure Functions
     ////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
-    function calculateHealthFactor(
-        uint256 totalArsxMintedInUsd,
-        uint256 collateralValueInUsd
-    ) external view returns (uint256) {
-        return
-            _calculateHealthFactor(totalArsxMintedInUsd, collateralValueInUsd);
+    function calculateHealthFactor(uint256 totalArsxMintedInUsd, uint256 collateralValueInUsd)
+        external
+        view
+        returns (uint256)
+    {
+        return _calculateHealthFactor(totalArsxMintedInUsd, collateralValueInUsd);
     }
 
-    function getAccountInformation(
-        address user
-    )
+    function getAccountInformation(address user)
         external
         view
         returns (uint256 totalArsxMinted, uint256 collateralValueInUsd)
@@ -498,16 +401,11 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         return _getUsdValue(token, amount);
     }
 
-    function getCollateralBalanceOfUser(
-        address user,
-        address token
-    ) external view returns (uint256) {
+    function getCollateralBalanceOfUser(address user, address token) external view returns (uint256) {
         return s_collateralDeposited[user][token];
     }
 
-    function getAccountCollateralValue(
-        address user
-    ) public view returns (uint256 totalCollateralValueInUsd) {
+    function getAccountCollateralValue(address user) public view returns (uint256 totalCollateralValueInUsd) {
         for (uint256 index = 0; index < s_collateralTokens.length; index++) {
             address token = s_collateralTokens[index];
             uint256 amount = s_collateralDeposited[user][token];
@@ -516,23 +414,16 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         return totalCollateralValueInUsd;
     }
 
-    function getTokenAmountFromUsd(
-        address token,
-        uint256 amountInWei
-    ) public view returns (uint256) {
+    function getTokenAmountFromUsd(address token, uint256 amountInWei) public view returns (uint256) {
         uint256 arsxPrice = s_ARSXOracle.latestValidData(maxOracleAge);
-        uint256 usdAmountInWei = (amountInWei * arsxPrice) /
-            ARSX_ORACLE_PRECISION;
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(
-            s_priceFeeds[token]
-        );
-        (, int256 price, , , ) = priceFeed.staleCheckLatestRoundData();
+        uint256 usdAmountInWei = (amountInWei * arsxPrice) / ARSX_ORACLE_PRECISION;
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         // $100e18 USD Debt
         // 1 ETH = 2000 USD
         // The returned value from Chainlink will be 2000 * 1e8
         // Most USD pairs have 8 decimals, so we will just pretend they all do
-        return ((usdAmountInWei * PRECISION) /
-            (uint256(price) * ADDITIONAL_FEED_PRECISION));
+        return ((usdAmountInWei * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION));
     }
 
     function getPrecision() external pure returns (uint256) {
@@ -567,9 +458,7 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         return address(i_arsx);
     }
 
-    function getCollateralTokenPriceFeed(
-        address token
-    ) external view returns (address) {
+    function getCollateralTokenPriceFeed(address token) external view returns (address) {
         return s_priceFeeds[token];
     }
 

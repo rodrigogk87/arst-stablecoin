@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import {ARSUSDTOracle} from "../src/ARSUSDTOracle.sol";
+import {ARSUSDTOracle} from "src/ARSUSDTOracle.sol";
 
 contract DeployOracle is Script {
     function run() external {
@@ -17,3 +17,5 @@ contract DeployOracle is Script {
         vm.stopBroadcast();
     }
 }
+
+//0xB3494B032cBCB533EAa4980d56e6a9B882f54aD6

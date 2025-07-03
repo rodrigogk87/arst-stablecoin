@@ -2,9 +2,9 @@
 pragma solidity 0.8.20;
 
 import "forge-std/Script.sol";
-import {ARSXStableCoin} from "../src/ARSXStableCoin.sol";
-import {ARSXEngine} from "../src/ARSXEngine.sol";
-import {IARSUSDTOracle} from "../src/interfaces/IARSUSDTOracle.sol";
+import {ARSXStableCoin} from "src/ARSXStableCoin.sol";
+import {ARSXEngine} from "src/ARSXEngine.sol";
+import {IARSUSDTOracle} from "src/interfaces/IARSUSDTOracle.sol";
 
 /**
  * @title DeployARSX
@@ -47,3 +47,8 @@ contract DeployARSX is Script {
 
 //./script/deploy.sh sepolia
 //./script/deploy.sh arb_sepolia
+
+/*
+  ARSXStableCoin deployed at: 0x4f69fa8685231882de9aba12112E1d3C30ea0F41
+  ARSXEngine deployed at: 0x8e8E911b84b52F3A42fa3b61394153318B06cBa5
+*/

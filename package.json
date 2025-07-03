@@ -22,6 +22,7 @@
   },
   "homepage": "https://github.com/rodrigogk87/arst-stablecoin#readme",
   "dependencies": {
+    "axios": "^1.10.0",
     "dotenv": "^17.0.1",
     "ethers": "^6.15.0"
   }
