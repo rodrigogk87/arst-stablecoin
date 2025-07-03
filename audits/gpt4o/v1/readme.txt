@@ -1,0 +1,1 @@
+v1 contracts rely on an oracle that uses chainlink functions, its branch is fixed and named with-chainlink-functions
