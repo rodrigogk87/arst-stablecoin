@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ACLManager} from "./ACLManager.sol";
 
-contract ARSUSDTOracle is Ownable {
+contract ARSUSDTOracle {
     error ARSUSDTOracle__StaleData();
     error ARSUSDTOracle__PriceError();
     error ARSUSDTOracle__NotAuthorized();
@@ -13,12 +13,20 @@ contract ARSUSDTOracle is Ownable {
 
     event PriceUpdated(uint256 newPrice, uint256 timestamp);
 
-    constructor() Ownable(msg.sender) {
+    ACLManager private immutable aclManager;
+
+    constructor(address _aclManager) {
+        aclManager = ACLManager(_aclManager);
         latestAnswer = 0;
         lastUpdateTimestamp = block.timestamp;
     }
 
-    function updatePrice(uint256 newPrice) external onlyOwner {
+    function updatePrice(uint256 newPrice) external {
+        // Check if sender has PRICE_UPDATER_ROLE
+        if (!aclManager.hasRole(aclManager.PRICE_UPDATER_ROLE(), msg.sender)) {
+            revert ARSUSDTOracle__NotAuthorized();
+        }
+
         latestAnswer = newPrice;
         lastUpdateTimestamp = block.timestamp;
         emit PriceUpdated(newPrice, lastUpdateTimestamp);

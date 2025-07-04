@@ -51,7 +51,7 @@ export PRICE_FEED
 export ORACLE_ADDRESS
 
 # Ejecutar
-forge script script/deploy/main/Deploy.s.sol \
+forge script script/Deploy.s.sol \
   --rpc-url "$RPC_URL" \
   --broadcast \
   --verify \

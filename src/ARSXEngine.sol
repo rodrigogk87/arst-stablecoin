@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ARSXStableCoin} from "./ARSXStableCoin.sol";
 import {IARSUSDTOracle} from "./interfaces/IARSUSDTOracle.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ACLManager} from "./ACLManager.sol";
 
 /*
  * @title ARSXEngine
@@ -29,7 +29,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * for minting and redeeming ARSX, as well as depositing and withdrawing collateral.
  * @notice This contract is based on the MakerDAO DSS system
  */
-contract ARSXEngine is ReentrancyGuard, Ownable {
+contract ARSXEngine is ReentrancyGuard {
     ///////////////////
     // Constants
     ///////////////////
@@ -80,6 +80,8 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
     mapping(address user => uint256 amount) private s_ARSXMinted;
     address[] private s_collateralTokens;
 
+    ACLManager public aclManager;
+
     ///////////////////
     // Events
     ///////////////////
@@ -113,8 +115,9 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         address[] memory tokenAddresses,
         address[] memory priceFeedAddresses,
         address arsxAddress,
-        address arsxOracleAddress
-    ) Ownable(msg.sender) {
+        address arsxOracleAddress,
+        address _aclManager
+    ) {
         if (tokenAddresses.length != priceFeedAddresses.length) {
             revert ARSXEngine__TokenAddressesAndPriceFeedAddressesAmountsDontMatch();
         }
@@ -124,12 +127,15 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         }
         i_arsx = ARSXStableCoin(arsxAddress);
         s_ARSXOracle = IARSUSDTOracle(arsxOracleAddress);
+        aclManager = ACLManager(_aclManager);
     }
 
     ///////////////////
     // Governance Setters
     ///////////////////
-    function setLiquidationParameters(uint256 newThreshold, uint256 newBonus) external onlyOwner {
+    function setLiquidationParameters(uint256 newThreshold, uint256 newBonus) external {
+        aclManager.checkRiskAdmin(msg.sender);
+
         if (newThreshold < MIN_LIQUIDATION_THRESHOLD || newThreshold > MAX_LIQUIDATION_THRESHOLD) {
             revert ARSXEngine__InvalidLiquidationThreshold();
         }
@@ -142,7 +148,9 @@ contract ARSXEngine is ReentrancyGuard, Ownable {
         emit LiquidationParametersUpdated(newThreshold, newBonus);
     }
 
-    function setOracleFreshnessParams(uint256 _maxAge) external onlyOwner {
+    function setOracleFreshnessParams(uint256 _maxAge) external {
+        aclManager.checkConfigAdmin(msg.sender);
+
         maxOracleAge = _maxAge;
         emit OracleFreshnessParamsUpdated(_maxAge);
     }

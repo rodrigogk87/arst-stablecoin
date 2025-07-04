@@ -8,6 +8,7 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {ERC20Mock} from "./ERC20Mock.sol";
 import {MockOracle} from "./MockOracle.sol";
 import {ARSMockOracle} from "./ARSMockOracle.sol";
+import {ACLManager} from "../src/ACLManager.sol";
 
 contract ARSXEngineTest is Test {
     ARSXEngine engine;
@@ -15,31 +16,41 @@ contract ARSXEngineTest is Test {
     ERC20Mock collateral;
     MockOracle priceFeed;
     ARSMockOracle arsxOracle;
+    ACLManager aclManager;
 
     address user = address(15);
 
     function setUp() public {
-        // Timestamp aproximado para hoy
-        vm.warp(1_757_117_200);
+        vm.warp(1_757_117_200); // Freeze timestamp
+
+        // Deploy ACLManager
+        aclManager = new ACLManager(address(this));
 
         // Deploy mock tokens and oracles
         collateral = new ERC20Mock("CollateralToken", "COL");
         priceFeed = new MockOracle();
-        stable = new ARSXStableCoin(user);
         arsxOracle = new ARSMockOracle();
 
+        // Deploy stablecoin
+        stable = new ARSXStableCoin(address(aclManager));
+
+        // Grant roles to engine (not yet deployed, but we'll do after)
         address[] memory tokens = new address[](1);
         address[] memory feeds = new address[](1);
 
         tokens[0] = address(collateral);
         feeds[0] = address(priceFeed);
 
-        engine = new ARSXEngine(tokens, feeds, address(stable), address(arsxOracle));
-        vm.prank(user);
-        stable.transferOwnership(address(engine));
+        // Deploy engine (using placeholder for now)
+        engine = new ARSXEngine(tokens, feeds, address(stable), address(arsxOracle), address(aclManager));
+
+        // Grant roles to engine
+        aclManager.grantRole(aclManager.MINTER_ROLE(), address(engine));
+        aclManager.grantRole(aclManager.BURNER_ROLE(), address(engine));
 
         // Mint collateral tokens to user
         collateral.mint(user, 1000 ether);
+
         vm.prank(user);
         collateral.approve(address(engine), type(uint256).max);
     }
@@ -80,7 +91,6 @@ contract ARSXEngineTest is Test {
     function testRedeemCollateralForArsx() public {
         vm.startPrank(user);
         engine.depositCollateralAndMintArsx(address(collateral), 200 ether, 50 ether);
-        //approve to burn them
         stable.approve(address(engine), 50 ether);
         engine.redeemCollateralForArsx(address(collateral), 50 ether, 20 ether);
         (uint256 minted, uint256 collateralValue) = engine.getAccountInformation(user);
@@ -92,7 +102,6 @@ contract ARSXEngineTest is Test {
     function testBurnArsx() public {
         vm.startPrank(user);
         engine.depositCollateralAndMintArsx(address(collateral), 200 ether, 50 ether);
-        //approve to burn them
         stable.approve(address(engine), 10 ether);
         engine.burnArsx(10 ether);
         (uint256 minted,) = engine.getAccountInformation(user);
@@ -103,6 +112,7 @@ contract ARSXEngineTest is Test {
     function testLiquidate() public {
         address liquidator = address(2);
 
+        // Mint collateral tokens to liquidator
         collateral.mint(liquidator, 1000 ether);
         vm.startPrank(liquidator);
         collateral.approve(address(engine), type(uint256).max);
@@ -112,8 +122,10 @@ contract ARSXEngineTest is Test {
         engine.depositCollateralAndMintArsx(address(collateral), 0.1 ether, 100_000 ether);
         vm.stopPrank();
 
-        priceFeed.setPrice(1000 * 1e8); // ETH cae a $1000
+        // Drop price so user becomes unhealthy
+        priceFeed.setPrice(1000 * 1e8);
 
+        // Mint ARSX to liquidator so it can cover user debt
         vm.startPrank(address(engine));
         stable.mint(liquidator, 500 ether);
         vm.stopPrank();
@@ -122,8 +134,6 @@ contract ARSXEngineTest is Test {
         stable.approve(address(engine), type(uint256).max);
 
         console.log("Health factor antes:", engine.getHealthFactor(user));
-
-        // Check correcto
         require(engine.getHealthFactor(user) < 1e18, "User no es liquidable");
 
         engine.liquidate(address(collateral), user, 50 ether);
