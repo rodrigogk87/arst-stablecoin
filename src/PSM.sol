@@ -72,11 +72,7 @@ contract PSM {
         uint256 fee = (collateralAmount * feeBps) / 10_000;
         uint256 netAmount = collateralAmount - fee;
 
-        bool success = collateralToken.transferFrom(
-            msg.sender,
-            address(this),
-            collateralAmount
-        );
+        bool success = collateralToken.transferFrom(msg.sender, address(this), collateralAmount);
         if (!success) revert PSM__TransferFailed();
 
         bool minted = arsx.mint(msg.sender, netAmount);
