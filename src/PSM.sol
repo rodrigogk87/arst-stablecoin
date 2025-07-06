@@ -4,11 +4,12 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ARSXStableCoin} from "./ARSXStableCoin.sol";
 import {ACLManager} from "./ACLManager.sol";
+import {IARSUSDTOracle} from "./interfaces/IARSUSDTOracle.sol";
 
 /**
  * @title Peg Stability Module (PSM)
- * @author Tu equipo
- * @notice Permite swaps directos entre ARSX y un colateral (ej: USDC), manteniendo el peg y gestionando liquidez.
+ * @author Rodrigo Garcia Kosinski
+ * @notice Allows direct swaps between ARSX and a collateral token (e.g., USDC), using the ARS/USDT oracle to calculate amounts.
  */
 contract PSM {
     error PSM__AmountMustBeMoreThanZero();
@@ -19,21 +20,26 @@ contract PSM {
     IERC20 public immutable collateralToken;
     ARSXStableCoin public immutable arsx;
     ACLManager public immutable aclManager;
+    IARSUSDTOracle public immutable arsxOracle;
 
-    uint256 public feeBps; // ej: 30 = 0.3%
-    uint256 public redeemThreshold; // ej: 0.95 * 1e18 = 95% del balance
+    uint256 public feeBps; // e.g., 30 = 0.3%
+    uint256 public redeemThreshold; // e.g., 0.95 * 1e18 = 95% of balance
+    uint256 public maxOracleAge = 3600; // e.g., 1 hour
 
     /**
-     * @param _collateralToken Address del token colateral (ej: USDC)
-     * @param _arsx Address del token ARSX
-     * @param _aclManager Address del ACLManager
-     * @param _feeBps Fee en basis points (bps). 100 bps = 1%
-     * @param _redeemThreshold Umbral para limitar redenciones, ej: 0.95 * 1e18
+     * @notice PSM contract constructor
+     * @param _collateralToken Address of the collateral token (e.g., USDC)
+     * @param _arsx Address of the ARSX token
+     * @param _aclManager Address of the ACLManager
+     * @param _arsxOracle Address of the ARS/USDT oracle
+     * @param _feeBps Fee in basis points (bps). 100 bps = 1%
+     * @param _redeemThreshold Maximum redemption threshold, e.g., 0.95 * 1e18
      */
     constructor(
         address _collateralToken,
         address _arsx,
         address _aclManager,
+        address _arsxOracle,
         uint256 _feeBps,
         uint256 _redeemThreshold
     ) {
@@ -41,12 +47,14 @@ contract PSM {
         collateralToken = IERC20(_collateralToken);
         arsx = ARSXStableCoin(_arsx);
         aclManager = ACLManager(_aclManager);
+        arsxOracle = IARSUSDTOracle(_arsxOracle);
         feeBps = _feeBps;
         redeemThreshold = _redeemThreshold;
     }
 
     /**
-     * @notice Actualizar el fee (en bps)
+     * @notice Updates the fee in basis points
+     * @param newFeeBps New fee in bps (1% = 100)
      */
     function setFee(uint256 newFeeBps) external {
         aclManager.checkConfigAdmin(msg.sender);
@@ -54,8 +62,8 @@ contract PSM {
     }
 
     /**
-     * @notice Actualizar el umbral máximo de redención
-     * @param newThreshold Debe ser <= 1e18 (100%)
+     * @notice Updates the maximum redemption threshold
+     * @param newThreshold New threshold, must be <= 1e18 (100%)
      */
     function setRedeemThreshold(uint256 newThreshold) external {
         aclManager.checkConfigAdmin(msg.sender);
@@ -64,46 +72,69 @@ contract PSM {
     }
 
     /**
-     * @notice Swap de colateral a ARSX (mint)
+     * @notice Updates the maximum allowed oracle data age
+     * @param newMaxAge New maximum age in seconds
+     */
+    function setMaxOracleAge(uint256 newMaxAge) external {
+        aclManager.checkConfigAdmin(msg.sender);
+        maxOracleAge = newMaxAge;
+    }
+
+    /**
+     * @notice Swaps collateral (e.g., USDC) for ARSX, minting ARSX based on the oracle price
+     * @param collateralAmount Amount of collateral token provided
      */
     function swapCollateralForARSX(uint256 collateralAmount) external {
         if (collateralAmount == 0) revert PSM__AmountMustBeMoreThanZero();
 
-        uint256 fee = (collateralAmount * feeBps) / 10_000;
-        uint256 netAmount = collateralAmount - fee;
+        uint256 priceARSPerUSDT = arsxOracle.latestValidData(maxOracleAge);
+        uint256 arsxAmount = (collateralAmount * priceARSPerUSDT) / 1e8;
 
-        bool success = collateralToken.transferFrom(msg.sender, address(this), collateralAmount);
+        uint256 fee = (arsxAmount * feeBps) / 10_000;
+        uint256 netARSX = arsxAmount - fee;
+
+        bool success = collateralToken.transferFrom(
+            msg.sender,
+            address(this),
+            collateralAmount
+        );
         if (!success) revert PSM__TransferFailed();
 
-        bool minted = arsx.mint(msg.sender, netAmount);
+        bool minted = arsx.mint(msg.sender, netARSX);
         if (!minted) revert PSM__TransferFailed();
     }
 
     /**
-     * @notice Swap de ARSX a colateral (burn)
+     * @notice Swaps ARSX for collateral (e.g., USDC), burning ARSX and returning collateral based on the oracle price
+     * @param arsxAmount Amount of ARSX provided
      */
     function swapARSXForCollateral(uint256 arsxAmount) external {
         if (arsxAmount == 0) revert PSM__AmountMustBeMoreThanZero();
 
-        uint256 fee = (arsxAmount * feeBps) / 10_000;
-        uint256 netAmount = arsxAmount - fee;
+        uint256 priceARSPerUSDT = arsxOracle.latestValidData(maxOracleAge);
+        uint256 collateralAmount = (arsxAmount * 1e8) / priceARSPerUSDT;
+
+        uint256 fee = (collateralAmount * feeBps) / 10_000;
+        uint256 netCollateral = collateralAmount - fee;
 
         uint256 collateralBalance = collateralToken.balanceOf(address(this));
         uint256 maxRedeemable = (collateralBalance * redeemThreshold) / 1e18;
 
-        if (netAmount > maxRedeemable) revert PSM__NotEnoughCollateral();
+        if (netCollateral > maxRedeemable) revert PSM__NotEnoughCollateral();
 
         bool success = arsx.transferFrom(msg.sender, address(this), arsxAmount);
         if (!success) revert PSM__TransferFailed();
 
         arsx.burn(arsxAmount);
 
-        success = collateralToken.transfer(msg.sender, netAmount);
+        success = collateralToken.transfer(msg.sender, netCollateral);
         if (!success) revert PSM__TransferFailed();
     }
 
     /**
-     * @notice Retiro de emergencia
+     * @notice Allows emergency collateral withdrawal by an emergency admin
+     * @param to Address receiving the collateral
+     * @param amount Amount to withdraw
      */
     function withdrawCollateral(address to, uint256 amount) external {
         aclManager.checkEmergencyAdmin(msg.sender);
