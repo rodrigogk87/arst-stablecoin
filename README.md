@@ -55,23 +55,6 @@ The repo includes a robust suite of tests using [Foundry](https://book.getfoundr
 - Health factor checks.
 - Liquidations with price drops.
 
-> Test example snippet:
-
-```solidity
-function testDepositAndMintTogether() public {
-    vm.startPrank(user);
-    engine.depositCollateralAndMintArsx(
-        address(collateral),
-        200 ether,
-        50 ether
-    );
-    (uint256 minted, uint256 collateralValue) = engine.getAccountInformation(user);
-    assertEq(minted, 50 ether);
-    assertGt(collateralValue, 0);
-    vm.stopPrank();
-}
-```
-
 ---
 
 ## Audits 🔒
