@@ -11,7 +11,7 @@ import {ARSMockOracle} from "./ARSMockOracle.sol";
 import {ACLManager} from "../src/ACLManager.sol";
 import {PSM} from "../src/PSM.sol";
 
-contract ARSXEngineTest is Test {
+contract ARSXTest is Test {
     ARSXEngine engine;
     ARSXStableCoin stable;
     ERC20Mock collateral;
