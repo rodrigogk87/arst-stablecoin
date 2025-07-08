@@ -41,23 +41,10 @@ contract ARSXEngineTest is Test {
         address[] memory feeds = new address[](1);
         tokens[0] = address(collateral);
         feeds[0] = address(priceFeed);
-        engine = new ARSXEngine(
-            tokens,
-            feeds,
-            address(stable),
-            address(arsxOracle),
-            address(aclManager)
-        );
+        engine = new ARSXEngine(tokens, feeds, address(stable), address(arsxOracle), address(aclManager));
 
         // Deploy PSM
-        psm = new PSM(
-            address(collateral),
-            address(stable),
-            address(aclManager),
-            address(arsxOracle),
-            30,
-            0.95e18
-        );
+        psm = new PSM(address(collateral), address(stable), address(aclManager), address(arsxOracle), 30, 0.95e18);
 
         // Grant roles
         aclManager.grantRole(aclManager.MINTER_ROLE(), address(engine));
@@ -81,10 +68,7 @@ contract ARSXEngineTest is Test {
     function testDepositCollateral() public {
         vm.startPrank(user);
         engine.depositCollateral(address(collateral), 200 ether);
-        assertEq(
-            engine.getCollateralBalanceOfUser(user, address(collateral)),
-            200 ether
-        );
+        assertEq(engine.getCollateralBalanceOfUser(user, address(collateral)), 200 ether);
         vm.stopPrank();
     }
 
@@ -92,20 +76,15 @@ contract ARSXEngineTest is Test {
         vm.startPrank(user);
         engine.depositCollateral(address(collateral), 200 ether);
         engine.mintArsx(50 ether);
-        (uint256 minted, ) = engine.getAccountInformation(user);
+        (uint256 minted,) = engine.getAccountInformation(user);
         assertEq(minted, 50 ether);
         vm.stopPrank();
     }
 
     function testDepositAndMintTogether() public {
         vm.startPrank(user);
-        engine.depositCollateralAndMintArsx(
-            address(collateral),
-            200 ether,
-            50 ether
-        );
-        (uint256 minted, uint256 collateralValue) = engine
-            .getAccountInformation(user);
+        engine.depositCollateralAndMintArsx(address(collateral), 200 ether, 50 ether);
+        (uint256 minted, uint256 collateralValue) = engine.getAccountInformation(user);
         assertEq(minted, 50 ether);
         assertGt(collateralValue, 0);
         vm.stopPrank();
@@ -115,24 +94,16 @@ contract ARSXEngineTest is Test {
         vm.startPrank(user);
         engine.depositCollateral(address(collateral), 100 ether);
         engine.redeemCollateral(address(collateral), 50 ether);
-        assertEq(
-            engine.getCollateralBalanceOfUser(user, address(collateral)),
-            50 ether
-        );
+        assertEq(engine.getCollateralBalanceOfUser(user, address(collateral)), 50 ether);
         vm.stopPrank();
     }
 
     function testRedeemCollateralForArsx() public {
         vm.startPrank(user);
-        engine.depositCollateralAndMintArsx(
-            address(collateral),
-            200 ether,
-            50 ether
-        );
+        engine.depositCollateralAndMintArsx(address(collateral), 200 ether, 50 ether);
         stable.approve(address(engine), 50 ether);
         engine.redeemCollateralForArsx(address(collateral), 50 ether, 20 ether);
-        (uint256 minted, uint256 collateralValue) = engine
-            .getAccountInformation(user);
+        (uint256 minted, uint256 collateralValue) = engine.getAccountInformation(user);
         assertEq(minted, 30 ether);
         assertGt(collateralValue, 0);
         vm.stopPrank();
@@ -140,14 +111,10 @@ contract ARSXEngineTest is Test {
 
     function testBurnArsx() public {
         vm.startPrank(user);
-        engine.depositCollateralAndMintArsx(
-            address(collateral),
-            200 ether,
-            50 ether
-        );
+        engine.depositCollateralAndMintArsx(address(collateral), 200 ether, 50 ether);
         stable.approve(address(engine), 10 ether);
         engine.burnArsx(10 ether);
-        (uint256 minted, ) = engine.getAccountInformation(user);
+        (uint256 minted,) = engine.getAccountInformation(user);
         assertEq(minted, 40 ether);
         vm.stopPrank();
     }
@@ -161,11 +128,7 @@ contract ARSXEngineTest is Test {
         vm.stopPrank();
 
         vm.startPrank(user);
-        engine.depositCollateralAndMintArsx(
-            address(collateral),
-            0.1 ether,
-            100_000 ether
-        );
+        engine.depositCollateralAndMintArsx(address(collateral), 0.1 ether, 100_000 ether);
         vm.stopPrank();
 
         priceFeed.setPrice(1000 * 1e8);
@@ -224,11 +187,7 @@ contract ARSXEngineTest is Test {
 
         uint256 userCollateralAfter = collateral.balanceOf(user);
 
-        assertGt(
-            userCollateralAfter,
-            userCollateralBefore,
-            "Should receive USDC back"
-        );
+        assertGt(userCollateralAfter, userCollateralBefore, "Should receive USDC back");
         vm.stopPrank();
     }
 }
